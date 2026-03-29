@@ -133,11 +133,11 @@ def seedsearch():
             parts = []
             for pos, in_rad in [(i, i_in), (j, j_in), (k, k_in), (l, l_in)]:
                 if in_rad and pos in pos_biome:
-                    pos_str = f"{pos}".ljust(12)
-                    biome_str = f"[{pos_biome[pos]}]".ljust(22)
+                    pos_str = f"{pos}".ljust(10)
+                    biome_str = f"[{pos_biome[pos]}]".ljust(18)
                     parts.append(f"{pos_str}  {biome_str}")
                 else:
-                    parts.append(f"{str(pos)}".ljust(12))
+                    parts.append(f"{str(pos)}".ljust(10))
             emit(f"Seed {seed}: {' '.join(parts)}", f)
 
             # periodic progress to stdout
