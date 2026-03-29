@@ -8,22 +8,17 @@ from structure import getpos
 
 
 BANNER = """
-Minecraft Bedrock Edition — brute-force structural 48-bit seed searcher
-with biome validation via cubiomes.
-
-NOTE on Bastion Remnants and Nether Fortresses:
-  Both share RNG salt 30084232 (they cannot be distinguished by salt alone).
-  These are NETHER structures — skip biome validation when searching for them.
+Minecraft brute-force seed searcher designed for bedrock edition structures.
 
 RNG constants  (Format: Spacing, Separation, Salt, Linear Separation)
-  Bastion/Fortress:      30,  4, 30084232,  0   <- Nether; skip biome
+  Bastion/Fortress:      30,  4, 30084232,  0
   Village:               34,  8, 10387312,  1
   Pillager Outpost:      80, 24, 165745296, 1
   Woodland Mansion:      80, 20, 10387319,  1
   Ocean Monument:        32,  5, 10387313,  1
   Shipwreck:             24,  4, 165745295, 1
   Ruined Portal:         40, 15, 40552231,  0
-  Other Overworld:       32,  8, 14357617,  0
+  Temples (dependant on biome):       32,  8, 14357617,  0
 
 Search radius:   accepts a hit if the position is within this many blocks of
                  the origin on both axes.
@@ -50,13 +45,13 @@ def seedsearch():
 
     # ---- output destination ------------------------------------------------
     print()
-    out_raw = input("Output to (f)ile or (c)onsole? [f]: ").strip().lower()
+    out_raw = input("Output to (f)ile or (c)onsole? ").strip().lower()
     to_console = out_raw in ("c", "console")
     if to_console:
         output_file = None
         print("  Results will be printed to the console.")
     else:
-        output_file = input("  File name [seed_results.txt]: ").strip() or "seed_results.txt"
+        output_file = input("  File name: ").strip() or "seed_results.txt"
         print(f"  Results will be saved to '{output_file}'.")
 
     # ---- biome validation --------------------------------------------------
@@ -91,7 +86,6 @@ def seedsearch():
     # ---- header ------------------------------------------------------------
     mode_label = "48-bit structure + 16-bit biome expansion" if expand_16 else "standard scan"
     header = (
-        f"# Seed search results — {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
         f"# Mode: {mode_label}\n"
         f"# Range [{seedstart}, {seedend})  spacing={spacing} "
         f"separation={separation} salt={salt} linear={int(linear_sep)}\n"
@@ -174,6 +168,14 @@ def seedsearch():
                     if found >= occurence:
                         emit(format_result(full_seed, positions_in_radius, pos_biome), f)
 
+                    # progress check during 16-bit expansion
+                    if top % 0x1000 == 0 and top != 0:
+                        elapsed = time.time() - times
+                        prog = f"Scanning {s48} + top 0x{top:04x}  elapsed={elapsed:.1f}s"
+                        print(prog)
+                        if not to_console and f:
+                            f.write(prog + "\n")
+
             # ------------------------------------------------------------------
             # Standard mode — biome check (if any) uses the seed as-is
             # ------------------------------------------------------------------
@@ -198,9 +200,9 @@ def seedsearch():
                     emit(format_result(s48, positions_in_radius, pos_biome), f)
 
             # periodic progress to stdout
-            if s48 % 1_000_000 == 0 and s48 != seedstart:
+            if s48 % 10_000 == 0 and s48 != seedstart:
                 elapsed = time.time() - times
-                prog = f"[Progress] scanned up to {s48}  elapsed={elapsed:.1f}s"
+                prog = f"Scanned up to {s48}  elapsed={elapsed:.1f}s"
                 print(prog)
                 if not to_console and f:
                     f.write(prog + "\n")
