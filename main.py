@@ -3,6 +3,7 @@ import time
 from math import floor
 import numba as nb
 import numpy as np
+import biome as bm
 
 
 MASK32 = 0xffffffff
@@ -63,89 +64,115 @@ def getpos(world_seed, rx, rz, spacing, separation, salt, linear_separation):
     return (chunk_x*16, chunk_z*16)
 
 
-
-
-
-
-
 # -------------------------
 # Seed scanning
 # -------------------------
 print(
 """
-This is Minecraft Bedrock Edition brute force seed searching app scanning for possibile structural 48-bit seeds.
-These seeds do not nessasary match because of biome restrictions, but altering the first 16-bits using a biome seedfinder may resolve the problem.
-Additionally, this app does not seperation structure variants, such as seperating bastions from fortresses.
-This app also only search regions [-1,-1] to [0,0], the first 4 quadrant around the origin.
+Minecraft Bedrock Edition — brute-force structural 48-bit seed searcher
+with optional Java Edition biome filtering via cubiomes.
 
-Input:
-SeedStart: The first seed the app simulates, and it adds one to the seed for the next seed.
-SeedEnd: Once we hit this seed, the app no longer scans, and stops. This is exclusive.
+NOTE: Structure RNG uses Bedrock constants; biome generation uses the
+      Java Edition algorithm from cubiomes (same noise math, different edition).
+      Use biome results as a guide or when searching Java seeds.
 
-The next four inputs are RNG constants. You will need to find them, then input it.
-Spacing: The number of chunks each region is in size.
-Seperation: The number of chunks that seperate each region.
-Salt: The number that the RNG uses to differ structure randomness from each other.
-Linear Seperation: Describes what algorithm it uses for seperation.
+RNG constants  (Format: Spacing, Separation, Salt, Linear Separation)
+  Bastion/Fortress:      30,  4, 30084232,  0
+  Village:               34,  8, 10387312,  1
+  Pillager Outpost:      80, 24, 165745296, 1
+  Woodland Mansion:      80, 20, 10387319,  1
+  Ocean Monument:        32,  5, 10387313,  1
+  Shipwreck:             24,  4, 165745295, 1
+  Ruined Portal:         40, 15, 40552231,  0
+  Other Overworld:       32,  8, 14357617,  0
 
-List of RNG constants: (Format: {Spacing, Seperation, Salt, Linear Seperation})
-Bastion and Fortress: {30, 4, 30084232, 0}
-Village: {34, 8, 10387312, 1}
-Pillage Outpost: {80, 24, 165745296, 1}
-Woodland Mansion: {80, 20, 10387319, 1}
-Monument: {32, 5, 10387313, 1} 
-Shipwreck: {24, 4, 165745295, 1}
-Ruined Portal: {40, 15, 40552231, 0}
-Many other Overworld Structures: {32, 8, 14357617, 0}
-
-Search radius: In this radius, the app will accept the match and add 1 to the counter.
-Min occurence: How many of the structures do you want in the radius before it gets outputed. (must be <= 4)
-
+Search radius:  app accepts a structure hit if its position is within this
+                many blocks of the origin on both axes.
+Min occurrence: how many of the 4 checked regions must have a hit (max 4).
 """
 )
-def seedsearch():
-    seedstart = int(input("SeedStart: "))
-    seedend = int(input("SeedEnd: "))
-    spacing = int(input("Spacing: "))
-    separation = int(input("Separation: "))
-    salt = int(input("Salt: "))
-    linear_seperation = bool(int(input("Linear seperation: (0 or 1) ")))
-    radius = int(input("Search radius: "))
-    occurence = int(input("Min occurence: "))
-    output_file = input("Output file name (default: seed_results.txt): ") or "seed_results.txt"
-    times = time.time()
 
+
+def seedsearch():
+    seedstart  = int(input("SeedStart: "))
+    seedend    = int(input("SeedEnd: "))
+    spacing    = int(input("Spacing: "))
+    separation = int(input("Separation: "))
+    salt       = int(input("Salt: "))
+    linear_sep = bool(int(input("Linear separation: (0 or 1) ")))
+    radius     = int(input("Search radius: "))
+    occurence  = int(input("Min occurrence: "))
+    output_file = input("Output file name (default: seed_results.txt): ").strip() or "seed_results.txt"
+
+    # --- optional biome filtering ---
+    print()
+    biome_cfg = bm.prompt_biome_requirements()
+    biome_gen = None
+    if biome_cfg is not None:
+        mc_version, dim, biome_reqs = biome_cfg
+        biome_gen = bm.BiomeGenerator(mc_version=mc_version, dim=dim)
+        print(f"\nBiome filtering ON  (MC {[k for k,v in bm.MC_VERSIONS.items() if v==mc_version][0]}, "
+              f"{[k for k,v in bm.DIMENSIONS.items() if v==dim][0]})\n")
+    else:
+        print("\nBiome filtering OFF\n")
+
+    times = time.time()
     seeds = range(seedstart, seedend)
 
     with open(output_file, 'w') as f:
+        f.write(f"# Seed search results — {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"# Range [{seedstart}, {seedend})  spacing={spacing} separation={separation} "
+                f"salt={salt} linear={int(linear_sep)}\n")
+        f.write(f"# Radius={radius}  min_occurrence={occurence}\n")
+        if biome_gen:
+            f.write(f"# Biome filter: {biome_reqs}\n")
+        f.write("\n")
+
         for seed in seeds:
             found = 0
-            i = (getpos(seed, 0, 0, spacing, separation, salt, linear_seperation))
+            i = getpos(seed, 0,  0,  spacing, separation, salt, linear_sep)
             if -radius < i[0] < radius and -radius < i[1] < radius:
-                found+=1
-            if found<1 and occurence>=4:
+                found += 1
+            if found < 1 and occurence >= 4:
                 continue
 
-            j = getpos(seed, -1, 0, spacing, separation, salt, linear_seperation)
+            j = getpos(seed, -1,  0, spacing, separation, salt, linear_sep)
             if -radius < j[0] < radius and -radius < j[1] < radius:
-                found+=1
+                found += 1
 
-
-            k = getpos(seed, 0, -1, spacing, separation, salt, linear_seperation)
+            k = getpos(seed,  0, -1, spacing, separation, salt, linear_sep)
             if -radius < k[0] < radius and -radius < k[1] < radius:
-                found+=1
+                found += 1
 
-
-            l = getpos(seed, -1, -1, spacing, separation, salt, linear_seperation)
+            l = getpos(seed, -1, -1, spacing, separation, salt, linear_sep)
             if -radius < l[0] < radius and -radius < l[1] < radius:
-                found+=1
-            if(found >= occurence):
-                f.write(f"Seed {seed}: {i,j,k,l}\n")
-            if seed % 1000000 == 0 and seed != seedstart:
-                f.write(f"Scanned up to {seed}. Time taken: {time.time()-times}\n")
-        f.write("Finished Scanning\n")
-        f.write(f"Time: {time.time()-times}\n")
-    
-    print(f"Results saved to {output_file}")
+                found += 1
 
-seedsearch()    
+            if found < occurence:
+                continue
+
+            # --- biome check (only for seeds that pass structure filter) ---
+            biome_info = ""
+            if biome_gen is not None:
+                passed, biome_results = biome_gen.check_seed(seed, biome_reqs)
+                if not passed:
+                    continue
+                parts = [f"({x},{z})={name}" for x, z, name in biome_results]
+                biome_info = "  biomes: " + ", ".join(parts)
+
+            line = f"Seed {seed}: {i} {j} {k} {l}{biome_info}"
+            f.write(line + "\n")
+
+            if seed % 1_000_000 == 0 and seed != seedstart:
+                elapsed = time.time() - times
+                prog = f"[Progress] scanned up to {seed}  elapsed={elapsed:.1f}s"
+                print(prog)
+                f.write(prog + "\n")
+
+        elapsed = time.time() - times
+        f.write(f"\n# Finished scanning.  Time: {elapsed:.2f}s\n")
+
+    print(f"Done. Results saved to '{output_file}'.  Time: {elapsed:.2f}s")
+
+
+seedsearch()
