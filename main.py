@@ -155,6 +155,9 @@ def seedsearch():
             if expand_16 and biome_gen is not None:
                 for top in range(0x10000):
                     full_seed = (top << 48) | (s48 & MASK48)
+                    # convert unsigned 64-bit to signed (Minecraft seeds are signed int64)
+                    if full_seed >= (1 << 63):
+                        full_seed -= (1 << 64)
                     biome_gen.apply_seed(full_seed)
 
                     found = 0
