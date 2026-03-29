@@ -1,14 +1,14 @@
 """
-biome.py — Python bindings for cubiomes (https://github.com/Cubitect/cubiomes)
+biome.py — Minecraft biome lookups via cubiomes (https://github.com/Cubitect/cubiomes)
 
-Provides fast Minecraft biome lookup via the compiled cubiomes shared library.
-Bedrock Edition and Java Edition share the same biome noise algorithm, so
-cubiomes results apply directly to Bedrock seeds.
+Wraps the compiled cubiomes shared library to provide fast biome queries for
+any seed, MC version, and dimension.  Includes the valid-biome tables for all
+biome-gated Overworld structures and a single interactive prompt that accepts
+either a structure preset or a custom biome list.
 
-NOTE: Bastion Remnants and Nether Fortresses generate in the Nether; their
-      salt (30084232) is shared and no overworld biome check applies to them.
-      All other structures listed here are Overworld structures whose spawn
-      locations ARE gated by biome.
+NOTE: Bastion Remnants and Nether Fortresses are Nether structures (salt
+      30084232).  No Overworld biome check applies to them; leave the biome
+      filter blank when searching for those structures.
 """
 
 import ctypes

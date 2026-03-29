@@ -1,75 +1,13 @@
-from typing import List, Tuple
-import time
-from math import floor
-import sys
-import numba as nb
-import numpy as np
-import biome as bm
-
-
-MASK32 = 0xffffffff
-N = 624
-M = 397
-MATRIX_A = 0x9908b0df
-UPPER_MASK = 0x80000000
-LOWER_MASK = 0x7fffffff
-
-@nb.njit(cache=True)
-def mt_init(seed32):
-    mt = np.empty(N, dtype=np.uint32)
-    mt[0] = seed32
-    for i in range(1, N):
-        mt[i] = (0x6c078965 * (mt[i-1] ^ (mt[i-1] >> 30)) + i) & MASK32
-    return mt
-
-@nb.njit(cache=True)
-def mt_twist(mt):
-    for i in range(N):
-        y = (mt[i] & UPPER_MASK) | (mt[(i+1) % N] & LOWER_MASK)
-        mt[i] = mt[(i + M) % N] ^ (y >> 1)
-        if y & 1:
-            mt[i] ^= MATRIX_A
-
-@nb.njit(cache=True)
-def mt_extract(mt, idx):
-    if idx >= N:
-        mt_twist(mt)
-        idx = 0
-    y = mt[idx]
-    y ^= (y >> 11)
-    y ^= (y << 7) & 0x9D2C5680
-    y ^= (y << 15) & 0xEFC60000
-    y ^= (y >> 18)
-    return y & MASK32, idx+1
-
-def getpos(world_seed, rx, rz, spacing, separation, salt, linear_separation):
-    spawn_range = spacing - separation
-    mixed = (world_seed + rx*341873128712 + rz*132897987541 + salt) & ((1<<64)-1)
-    seed32 = mixed & 0xffffffff
-
-    mt = mt_init(seed32)
-    idx = N
-    r0, idx = mt_extract(mt, idx)
-    r1, idx = mt_extract(mt, idx)
-    if linear_separation:
-        r2, idx = mt_extract(mt, idx)
-        r3, idx = mt_extract(mt, idx)
-        off_x = ((r0 % spawn_range) + (r1 % spawn_range)) // 2
-        off_z = ((r2 % spawn_range) + (r3 % spawn_range)) // 2
-    else:
-        off_x = r0 % spawn_range
-        off_z = r1 % spawn_range
-
-    chunk_x = rx * spacing + off_x
-    chunk_z = rz * spacing + off_z
-    return (chunk_x*16, chunk_z*16)
-
-
-# -------------------------
-# Seed scanning
-# -------------------------
-print(
 """
+main.py — Seed search loop and all user-facing output.
+"""
+
+import time
+import biome as bm
+from structure import getpos
+
+
+BANNER = """
 Minecraft Bedrock Edition — brute-force structural 48-bit seed searcher
 with biome validation via cubiomes.
 
@@ -93,18 +31,20 @@ Min occurrence:  how many of the 4 checked regions must have a valid hit (max 4)
                  With biome validation ON a hit only counts if the biome at the
                  computed position is in the allowed set.
 """
-)
 
 
 def seedsearch():
-    seedstart   = int(input("SeedStart: "))
-    seedend     = int(input("SeedEnd: "))
-    spacing     = int(input("Spacing: "))
-    separation  = int(input("Separation: "))
-    salt        = int(input("Salt: "))
-    linear_sep  = bool(int(input("Linear separation: (0 or 1) ")))
-    radius      = int(input("Search radius: "))
-    occurence   = int(input("Min occurrence: "))
+    print(BANNER)
+
+    # ---- search parameters -------------------------------------------------
+    seedstart  = int(input("SeedStart: "))
+    seedend    = int(input("SeedEnd: "))
+    spacing    = int(input("Spacing: "))
+    separation = int(input("Separation: "))
+    salt       = int(input("Salt: "))
+    linear_sep = bool(int(input("Linear separation: (0 or 1) ")))
+    radius     = int(input("Search radius: "))
+    occurence  = int(input("Min occurrence: "))
 
     # ---- output destination ------------------------------------------------
     print()
@@ -118,47 +58,49 @@ def seedsearch():
         print(f"  Results will be saved to '{output_file}'.")
 
     # ---- biome validation --------------------------------------------------
-    effective_biomes = bm.prompt_biome_validation()  # frozenset | None
+    effective_biomes = bm.prompt_biome_validation()  # frozenset[int] | None
 
     biome_gen = None
     if effective_biomes is not None:
         biome_gen = bm.BiomeGenerator(mc_version=bm.MC_1_21, dim=bm.DIM_OVERWORLD)
-        print("  Biome generator ready (MC 1.21, overworld).\n")
-    else:
-        print()
+        print("  Biome generator ready (MC 1.21, overworld).")
+    print()
 
-    times = time.time()
-    seeds = range(seedstart, seedend)
-
+    # ---- header ------------------------------------------------------------
     header = (
         f"# Seed search results — {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
         f"# Range [{seedstart}, {seedend})  spacing={spacing} "
         f"separation={separation} salt={salt} linear={int(linear_sep)}\n"
-        f"# Radius={radius}  min_occurrence={occurence}\n"
+        f"# Radius={radius}  min_occurrence={occurence}"
     )
     if effective_biomes is not None:
         labels = ", ".join(bm.BIOME_NAMES.get(b, str(b)) for b in sorted(effective_biomes))
-        header += f"# Biome filter: [{labels}]\n"
-    header += "\n"
+        header += f"\n# Biome filter: [{labels}]"
 
+    # ---- helpers -----------------------------------------------------------
     def emit(line, f=None):
+        """Write a line to the file, or print it if in console mode."""
         if to_console:
             print(line)
         else:
             f.write(line + "\n")
 
+    # ---- main scan loop ----------------------------------------------------
     def run(f=None):
-        emit(header.rstrip(), f)
+        emit(header, f)
+        emit("", f)
 
-        for seed in seeds:
+        times = time.time()
 
-            # --- compute the 4 candidate positions --------------------------
+        for seed in range(seedstart, seedend):
+
+            # compute the 4 candidate positions
             i = getpos(seed,  0,  0, spacing, separation, salt, linear_sep)
             j = getpos(seed, -1,  0, spacing, separation, salt, linear_sep)
             k = getpos(seed,  0, -1, spacing, separation, salt, linear_sep)
             l = getpos(seed, -1, -1, spacing, separation, salt, linear_sep)
 
-            # --- radius filter (no biome lookup yet) ------------------------
+            # fast radius filter — no biome lookup yet
             i_in = -radius < i[0] < radius and -radius < i[1] < radius
             j_in = -radius < j[0] < radius and -radius < j[1] < radius
             k_in = -radius < k[0] < radius and -radius < k[1] < radius
@@ -167,18 +109,18 @@ def seedsearch():
             if i_in + j_in + k_in + l_in < occurence:
                 continue
 
-            # --- biome check per candidate position -------------------------
-            pos_biome_names: dict[tuple, str] = {}
+            # biome check — only for positions that passed the radius filter
+            pos_biome: dict[tuple, str] = {}
 
-            if biome_gen is not None and effective_biomes is not None:
+            if biome_gen is not None:
                 biome_gen.apply_seed(seed)
                 found = 0
                 for pos, in_rad in [(i, i_in), (j, j_in), (k, k_in), (l, l_in)]:
                     if not in_rad:
                         continue
-                    bid   = biome_gen.biome_at_block(pos[0], pos[1])
-                    bname = biome_gen.biome_name(bid)
-                    pos_biome_names[pos] = bname
+                    bid  = biome_gen.biome_at_block(pos[0], pos[1])
+                    name = biome_gen.biome_name(bid)
+                    pos_biome[pos] = name
                     if bid in effective_biomes:
                         found += 1
             else:
@@ -187,16 +129,16 @@ def seedsearch():
             if found < occurence:
                 continue
 
-            # --- build result line ------------------------------------------
-            pos_parts = []
+            # build and emit result line
+            parts = []
             for pos, in_rad in [(i, i_in), (j, j_in), (k, k_in), (l, l_in)]:
-                if in_rad and pos in pos_biome_names:
-                    pos_parts.append(f"{pos}[{pos_biome_names[pos]}]")
+                if in_rad and pos in pos_biome:
+                    parts.append(f"{pos}[{pos_biome[pos]}]")
                 else:
-                    pos_parts.append(str(pos))
+                    parts.append(str(pos))
+            emit(f"Seed {seed}: {' '.join(parts)}", f)
 
-            emit(f"Seed {seed}: {' '.join(pos_parts)}", f)
-
+            # periodic progress to stdout
             if seed % 1_000_000 == 0 and seed != seedstart:
                 elapsed = time.time() - times
                 prog = f"[Progress] scanned up to {seed}  elapsed={elapsed:.1f}s"
@@ -205,15 +147,15 @@ def seedsearch():
                     f.write(prog + "\n")
 
         elapsed = time.time() - times
-        footer = f"\n# Finished scanning.  Time: {elapsed:.2f}s"
-        emit(footer, f)
+        emit(f"\n# Finished scanning.  Time: {elapsed:.2f}s", f)
         if not to_console:
             print(f"Done. Results saved to '{output_file}'.  Time: {elapsed:.2f}s")
 
+    # ---- dispatch ----------------------------------------------------------
     if to_console:
         run()
     else:
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             run(f)
 
 
