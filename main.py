@@ -1,6 +1,7 @@
 from typing import List, Tuple
 import time
 from math import floor
+import sys
 import numba as nb
 import numpy as np
 import biome as bm
@@ -70,13 +71,14 @@ def getpos(world_seed, rx, rz, spacing, separation, salt, linear_separation):
 print(
 """
 Minecraft Bedrock Edition — brute-force structural 48-bit seed searcher
-with biome generation via cubiomes.
+with biome validation via cubiomes.
 
-Bedrock and Java Edition share the same biome noise algorithm, so cubiomes
-biome results apply directly to Bedrock seeds.
+NOTE on Bastion Remnants and Nether Fortresses:
+  Both share RNG salt 30084232 (they cannot be distinguished by salt alone).
+  These are NETHER structures — skip biome validation when searching for them.
 
 RNG constants  (Format: Spacing, Separation, Salt, Linear Separation)
-  Bastion/Fortress:      30,  4, 30084232,  0
+  Bastion/Fortress:      30,  4, 30084232,  0   <- Nether; skip biome
   Village:               34,  8, 10387312,  1
   Pillager Outpost:      80, 24, 165745296, 1
   Woodland Mansion:      80, 20, 10387319,  1
@@ -85,11 +87,11 @@ RNG constants  (Format: Spacing, Separation, Salt, Linear Separation)
   Ruined Portal:         40, 15, 40552231,  0
   Other Overworld:       32,  8, 14357617,  0
 
-Search radius:   app accepts a structure hit if its position is within this
-                 many blocks of the origin on both axes.
+Search radius:   accepts a hit if the position is within this many blocks of
+                 the origin on both axes.
 Min occurrence:  how many of the 4 checked regions must have a valid hit (max 4).
-                 With structure biome validation ON a hit only counts if the
-                 biome at the computed position allows the structure to spawn.
+                 With biome validation ON a hit only counts if the biome at the
+                 computed position is in the allowed set.
 """
 )
 
@@ -103,54 +105,50 @@ def seedsearch():
     linear_sep  = bool(int(input("Linear separation: (0 or 1) ")))
     radius      = int(input("Search radius: "))
     occurence   = int(input("Min occurrence: "))
-    output_file = input("Output file name (default: seed_results.txt): ").strip() \
-                  or "seed_results.txt"
 
-    # ---- structure biome validation ----------------------------------------
-    struct_cfg = bm.prompt_structure_type()   # (key, valid_biomes|None) or None
-
-    # ---- custom biome restriction at candidate positions -------------------
-    biome_cfg = bm.prompt_biome_requirements()  # (mc_version, frozenset) or None
-
-    # ---- compute the effective biome set to check per candidate position ---
-    # A position counts as "found" only if its biome is in effective_biomes.
-    # effective_biomes = intersection of structure valid biomes and custom biomes
-    # (whichever are specified; None means no restriction from that source).
-    struct_valid  = struct_cfg[1] if struct_cfg is not None else None
-    custom_biomes = biome_cfg[1]  if biome_cfg  is not None else None
-
-    if struct_valid is not None and custom_biomes is not None:
-        effective_biomes = struct_valid & custom_biomes   # both must be satisfied
-    elif struct_valid is not None:
-        effective_biomes = struct_valid
-    elif custom_biomes is not None:
-        effective_biomes = custom_biomes
-    else:
-        effective_biomes = None   # no biome restriction
-
-    # ---- set up generator --------------------------------------------------
-    mc_version = biome_cfg[0] if biome_cfg is not None else bm.MC_1_21
-    biome_gen  = None
-    if effective_biomes is not None or struct_cfg is not None:
-        biome_gen = bm.BiomeGenerator(mc_version=mc_version, dim=bm.DIM_OVERWORLD)
-        ver_label = [k for k, v in bm.MC_VERSIONS.items() if v == mc_version][0]
-        print(f"\nBiome generator ready  (MC {ver_label}, overworld)")
-
+    # ---- output destination ------------------------------------------------
     print()
+    out_raw = input("Output to (f)ile or (c)onsole? [f]: ").strip().lower()
+    to_console = out_raw in ("c", "console")
+    if to_console:
+        output_file = None
+        print("  Results will be printed to the console.")
+    else:
+        output_file = input("  File name [seed_results.txt]: ").strip() or "seed_results.txt"
+        print(f"  Results will be saved to '{output_file}'.")
+
+    # ---- biome validation --------------------------------------------------
+    effective_biomes = bm.prompt_biome_validation()  # frozenset | None
+
+    biome_gen = None
+    if effective_biomes is not None:
+        biome_gen = bm.BiomeGenerator(mc_version=bm.MC_1_21, dim=bm.DIM_OVERWORLD)
+        print("  Biome generator ready (MC 1.21, overworld).\n")
+    else:
+        print()
+
     times = time.time()
     seeds = range(seedstart, seedend)
 
-    with open(output_file, 'w') as f:
-        f.write(f"# Seed search results — {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"# Range [{seedstart}, {seedend})  spacing={spacing} "
-                f"separation={separation} salt={salt} linear={int(linear_sep)}\n")
-        f.write(f"# Radius={radius}  min_occurrence={occurence}\n")
-        if struct_cfg is not None:
-            f.write(f"# Structure biome check: {struct_cfg[0]}\n")
-        if custom_biomes is not None:
-            labels = ", ".join(bm.BIOME_NAMES.get(b, str(b)) for b in sorted(custom_biomes))
-            f.write(f"# Custom biome requirement at candidate positions: [{labels}]\n")
-        f.write("\n")
+    header = (
+        f"# Seed search results — {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"# Range [{seedstart}, {seedend})  spacing={spacing} "
+        f"separation={separation} salt={salt} linear={int(linear_sep)}\n"
+        f"# Radius={radius}  min_occurrence={occurence}\n"
+    )
+    if effective_biomes is not None:
+        labels = ", ".join(bm.BIOME_NAMES.get(b, str(b)) for b in sorted(effective_biomes))
+        header += f"# Biome filter: [{labels}]\n"
+    header += "\n"
+
+    def emit(line, f=None):
+        if to_console:
+            print(line)
+        else:
+            f.write(line + "\n")
+
+    def run(f=None):
+        emit(header.rstrip(), f)
 
         for seed in seeds:
 
@@ -160,7 +158,7 @@ def seedsearch():
             k = getpos(seed,  0, -1, spacing, separation, salt, linear_sep)
             l = getpos(seed, -1, -1, spacing, separation, salt, linear_sep)
 
-            # --- radius filter (fast, no biome lookup yet) ------------------
+            # --- radius filter (no biome lookup yet) ------------------------
             i_in = -radius < i[0] < radius and -radius < i[1] < radius
             j_in = -radius < j[0] < radius and -radius < j[1] < radius
             k_in = -radius < k[0] < radius and -radius < k[1] < radius
@@ -170,8 +168,6 @@ def seedsearch():
                 continue
 
             # --- biome check per candidate position -------------------------
-            # A position counts as "found" only when it is in radius AND its
-            # biome is in effective_biomes (structure valid ∩ custom, if set).
             pos_biome_names: dict[tuple, str] = {}
 
             if biome_gen is not None and effective_biomes is not None:
@@ -191,28 +187,34 @@ def seedsearch():
             if found < occurence:
                 continue
 
-            # --- build output line with biome annotations -------------------
+            # --- build result line ------------------------------------------
             pos_parts = []
             for pos, in_rad in [(i, i_in), (j, j_in), (k, k_in), (l, l_in)]:
                 if in_rad and pos in pos_biome_names:
                     pos_parts.append(f"{pos}[{pos_biome_names[pos]}]")
                 else:
                     pos_parts.append(str(pos))
-            pos_str = " ".join(pos_parts)
 
-            line = f"Seed {seed}: {pos_str}"
-            f.write(line + "\n")
+            emit(f"Seed {seed}: {' '.join(pos_parts)}", f)
 
             if seed % 1_000_000 == 0 and seed != seedstart:
                 elapsed = time.time() - times
                 prog = f"[Progress] scanned up to {seed}  elapsed={elapsed:.1f}s"
                 print(prog)
-                f.write(prog + "\n")
+                if not to_console and f:
+                    f.write(prog + "\n")
 
         elapsed = time.time() - times
-        f.write(f"\n# Finished scanning.  Time: {elapsed:.2f}s\n")
+        footer = f"\n# Finished scanning.  Time: {elapsed:.2f}s"
+        emit(footer, f)
+        if not to_console:
+            print(f"Done. Results saved to '{output_file}'.  Time: {elapsed:.2f}s")
 
-    print(f"Done. Results saved to '{output_file}'.  Time: {elapsed:.2f}s")
+    if to_console:
+        run()
+    else:
+        with open(output_file, 'w') as f:
+            run(f)
 
 
 seedsearch()

@@ -426,79 +426,55 @@ class BiomeGenerator:
 # Interactive helpers
 # ---------------------------------------------------------------------------
 
-def prompt_structure_type() -> tuple[str, frozenset[int] | None] | None:
+def prompt_biome_validation() -> frozenset[int] | None:
     """
-    Ask the user which overworld structure they are searching for so the
-    scanner can verify that the biome at each found position actually allows
-    the structure to spawn.
+    Ask the user for a biome filter applied at each structure candidate position.
 
-    Returns (structure_key, valid_biomes_frozenset_or_None), or None if skipped.
-    NOTE: bastion_fortress is excluded — it is a Nether structure.
+    The user enters ONE of:
+      - A structure name  → uses that structure's preset valid biome list
+      - Biome name(s)     → comma-separated custom list
+      - blank             → no biome filter
+
+    Returns a frozenset of allowed biome IDs, or None if skipped.
+    Always uses MC 1.21 noise (hardcoded).
+
+    NOTE: Bastion Remnants and Nether Fortresses are Nether structures —
+          leave this blank when searching for them.
     """
+    structure_names = ", ".join(STRUCTURE_VALID_BIOMES.keys())
     print()
-    print("Structure biome validation — picks only positions where the")
-    print("structure would actually generate given the biome at that spot.")
-    print()
-    print("Overworld structures with biome gating:")
-    for key, label in STRUCTURE_LABELS.items():
-        print(f"  {key:<20} — {label}")
-    print()
-    choice = input("Structure type (leave blank to skip): ").strip().lower()
-    if not choice:
-        return None
-    choice = choice.replace(" ", "_").replace("-", "_")
-    if choice not in STRUCTURE_VALID_BIOMES:
-        print(f"  Unknown structure '{choice}' — skipping structure biome check.")
-        return None
-    valid = STRUCTURE_VALID_BIOMES[choice]
-    if valid is None:
-        print(f"  {choice} has no biome restriction — structure biome check skipped.")
-    else:
-        names = ", ".join(BIOME_NAMES.get(b, str(b)) for b in sorted(valid))
-        print(f"  Will require biome in: [{names}]")
-    return choice, valid
-
-
-def prompt_biome_requirements() -> tuple[int, frozenset[int]] | None:
-    """
-    Ask the user whether they want to restrict which biome the structure
-    candidate positions must be in, beyond the structure's own valid biome list.
-
-    The biome check is performed at each computed candidate position (the block
-    coordinates returned by getpos), not at any fixed coordinate.
-
-    Returns (mc_version, allowed_biome_ids) or None if skipped.
-    """
-    ans = input("\nRequire specific biome(s) at structure candidate positions? (y/n) [n]: ").strip().lower()
-    if ans not in ("y", "yes"):
-        return None
-
-    print("\nAvailable MC versions:", ", ".join(MC_VERSIONS.keys()))
-    ver_str = input("Minecraft version [1.21]: ").strip() or "1.21"
-    mc_version = MC_VERSIONS.get(ver_str)
-    if mc_version is None:
-        print(f"  Unknown version '{ver_str}', defaulting to 1.21")
-        mc_version = MC_1_21
-
-    print()
-    print("Enter the biome(s) that must appear at each counted structure position.")
-    print("  Separate multiple biomes with commas — any one of them will satisfy the check.")
-    print("  Example: plains")
-    print("  Example: plains,sunflower_plains,meadow")
-    print("  Type 'list' to see all biome names.")
+    print("Biome validation at structure candidate positions (optional).")
+    print("  Enter a structure name to use its preset:  " + structure_names)
+    print("  OR enter biome name(s) separated by commas for a custom filter.")
+    print("  Type 'list' to see all biome names.  Leave blank to skip.")
     print()
 
     while True:
-        raw = input("Required biome(s): ").strip()
-        if raw.lower() == "list":
+        raw = input("Biome filter: ").strip().lower()
+
+        if not raw:
+            return None
+
+        if raw == "list":
             print(list_biomes())
             continue
-        if not raw:
-            print("  No biomes entered — custom biome filtering disabled.")
-            return None
+
+        key = raw.replace(" ", "_").replace("-", "_")
+
+        # Check if it is a structure name
+        if key in STRUCTURE_VALID_BIOMES:
+            valid = STRUCTURE_VALID_BIOMES[key]
+            if valid is None:
+                print(f"  {key} has no biome restriction — filter skipped.")
+                return None
+            names = ", ".join(BIOME_NAMES.get(b, str(b)) for b in sorted(valid))
+            print(f"  Using preset for {key}: [{names}]")
+            return valid
+
+        # Otherwise treat as comma-separated biome names
         biome_names_raw = [b.strip() for b in raw.split(",")]
         allowed: set[int] = set()
-        bad = []
+        bad: list[str] = []
         for bn in biome_names_raw:
             bid = resolve_biome_name(bn)
             if bid is None:
@@ -506,8 +482,8 @@ def prompt_biome_requirements() -> tuple[int, frozenset[int]] | None:
             else:
                 allowed.add(bid)
         if bad:
-            print(f"  Unknown biome(s): {', '.join(bad)}.  Type 'list' to see valid names.")
+            print(f"  Unknown: {', '.join(bad)}.  Type 'list' to see valid biome names.")
             continue
         labels = ", ".join(BIOME_NAMES.get(b, str(b)) for b in sorted(allowed))
-        print(f"  Structure positions must be in: [{labels}]")
-        return mc_version, frozenset(allowed)
+        print(f"  Custom filter: [{labels}]")
+        return frozenset(allowed)
