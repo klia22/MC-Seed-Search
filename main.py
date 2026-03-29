@@ -168,14 +168,6 @@ def seedsearch():
                     if found >= occurence:
                         emit(format_result(full_seed, positions_in_radius, pos_biome), f)
 
-                    # progress check during 16-bit expansion
-                    if top % 0x1000 == 0 and top != 0:
-                        elapsed = time.time() - times
-                        prog = f"Scanning {s48} + top 0x{top:04x}  elapsed={elapsed:.1f}s"
-                        print(prog)
-                        if not to_console and f:
-                            f.write(prog + "\n")
-
             # ------------------------------------------------------------------
             # Standard mode — biome check (if any) uses the seed as-is
             # ------------------------------------------------------------------
@@ -200,9 +192,9 @@ def seedsearch():
                     emit(format_result(s48, positions_in_radius, pos_biome), f)
 
             # periodic progress to stdout
-            if s48 % 10_000 == 0 and s48 != seedstart:
+            if s48 % 1_000_000 == 0 and s48 != seedstart:
                 elapsed = time.time() - times
-                prog = f"Scanned up to {s48}  elapsed={elapsed:.1f}s"
+                prog = f"[Progress] scanned up to {s48}  elapsed={elapsed:.1f}s"
                 print(prog)
                 if not to_console and f:
                     f.write(prog + "\n")
