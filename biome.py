@@ -199,20 +199,10 @@ STRUCTURE_VALID_BIOMES: dict[str, frozenset[int] | None] = {
         1,   # plains
         2,   # desert
         5,   # taiga
-        12,  # snowy_tundra
         30,  # snowy_taiga
         35,  # savanna
-        # mutated variants
         129, # sunflower_plains
-        130, # desert_lakes
-        133, # taiga_mountains
-        140, # ice_spikes
-        158, # snowy_taiga_mountains
-        163, # shattered_savanna
-        # 1.18+ equivalents
         177, # meadow
-        178, # grove
-        179, # snowy_slopes
     }),
 
     # Pillager Outpost — same base biomes as village (no snowy_taiga)
@@ -221,19 +211,21 @@ STRUCTURE_VALID_BIOMES: dict[str, frozenset[int] | None] = {
         2,   # desert
         5,   # taiga
         12,  # snowy_tundra
+        30,  # snowy_taiga
         35,  # savanna
         129, # sunflower_plains
-        130, # desert_lakes
-        133, # taiga_mountains
-        163, # shattered_savanna
         177, # meadow (1.18+)
         178, # grove (1.18+)
+        179, # snowy_slopes (1.18+)
+        180, # jagged_peaks (1.18+)
+        181, # frozen_peaks (1.18+)
+        182, # stony_peaks (1.18+)
+        185, # cherry_grove (1.19+)
     }),
 
     # Woodland Mansion — dark forest only
     "woodland_mansion": frozenset({
         29,  # dark_forest
-        157, # dark_forest_hills
     }),
 
     # Ocean Monument — deep ocean variants only
@@ -264,22 +256,16 @@ STRUCTURE_VALID_BIOMES: dict[str, frozenset[int] | None] = {
     # Desert Pyramid — desert biomes
     "desert_pyramid": frozenset({
         2,   # desert
-        17,  # desert_hills
-        130, # desert_lakes
-        165, # eroded_badlands
     }),
 
     # Jungle Temple — jungle biomes
     "jungle_temple": frozenset({
         21,  # jungle
-        22,  # jungle_hills
-        149, # modified_jungle  (bamboo jungle in 1.14+)
     }),
 
     # Swamp Hut — swamp only
     "swamp_hut": frozenset({
         6,   # swamp
-        134, # swamp_hills
     }),
 
     # Igloo — snowy biomes

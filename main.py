@@ -132,7 +132,7 @@ def seedsearch():
         print("Ready — starting scan.\n", flush=True)
 
         times = time.time()
-        BATCH = 1_000_000
+        BATCH = 10_000_000
         s = seedstart
 
         while s < seedend:
