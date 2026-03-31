@@ -2,9 +2,14 @@
 main.py — Seed search loop and all user-facing output.
 """
 
+import sys
 import time
 import biome as bm
 from structure import getpos
+
+# Force line-buffered stdout so progress lines appear immediately in the
+# workflow console (Python defaults to block-buffered when not a real TTY).
+sys.stdout.reconfigure(line_buffering=True)
 
 
 BANNER = """
@@ -16,7 +21,7 @@ RNG constants  (Format: Spacing, Separation, Salt, Linear Separation)
   Pillager Outpost:      80, 24, 165745296, 1
   Woodland Mansion:      80, 20, 10387319,  1
   Ocean Monument:        32,  5, 10387313,  1
-  Shipwreck:             24,  4, 165745295, 1
+  Shipwreck:             24,  4, 165745295, 0
   Ruined Portal:         40, 15, 40552231,  0
   Temples (dependant on biome):       32,  8, 14357617,  0
 
@@ -143,9 +148,6 @@ def seedsearch():
 
             positions_in_radius = [(i, i_in), (j, j_in), (k, k_in), (l, l_in)]
 
-            # ------------------------------------------------------------------
-            # Biome expansion mode — try all 65536 top-16-bit values
-            # ------------------------------------------------------------------
             if expand_16 and biome_gen is not None:
                 for top in range(0x10000):
                     full_seed = (top << 48) | (s48 & MASK48)
@@ -168,9 +170,6 @@ def seedsearch():
                     if found >= occurence:
                         emit(format_result(full_seed, positions_in_radius, pos_biome), f)
 
-            # ------------------------------------------------------------------
-            # Standard mode — biome check (if any) uses the seed as-is
-            # ------------------------------------------------------------------
             else:
                 pos_biome: dict[tuple, str] = {}
 
@@ -192,7 +191,7 @@ def seedsearch():
                     emit(format_result(s48, positions_in_radius, pos_biome), f)
 
             # periodic progress to stdout
-            if s48 % 1_000_000 == 0 and s48 != seedstart:
+            if s48 % 1000000 == 0 and s48 != seedstart:
                 elapsed = time.time() - times
                 prog = f"[Progress] scanned up to {s48}  elapsed={elapsed:.1f}s"
                 print(prog)

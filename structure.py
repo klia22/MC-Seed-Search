@@ -90,4 +90,4 @@ def getpos(world_seed, rx, rz, spacing, separation, salt, linear_separation):
 
     chunk_x = rx * spacing + off_x
     chunk_z = rz * spacing + off_z
-    return (chunk_x * 16, chunk_z * 16)
+    return (chunk_x * 16 + 8, chunk_z * 16 + 8)
