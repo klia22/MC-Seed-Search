@@ -186,6 +186,8 @@ def seedsearch():
         times = time.time()
         BATCH = 25_000_000
         s = seedstart
+        total_struct  = 0  # seeds passing the fast structure scan
+        total_matched = 0  # seeds that also passed the biome filter
 
         while s < seedend:
             batch_end = min(s + BATCH, seedend)
@@ -193,6 +195,8 @@ def seedsearch():
             # --- fast numba structure scan — returns only seeds that pass ---
             hits = scan_batch(s, batch_end, spacing, separation, salt,
                               linear_sep, radius, occurence)
+            total_struct += len(hits)
+            batch_matched = 0
 
             # --- for each structural hit, compute positions + biome check ---
             for seed_val_raw in hits:
@@ -229,6 +233,7 @@ def seedsearch():
 
                         if found >= occurence:
                             emit(format_result(full_seed, positions_in_radius, pos_biome), f)
+                            batch_matched += 1
 
                 else:
                     pos_biome: dict[tuple, str] = {}
@@ -249,10 +254,23 @@ def seedsearch():
 
                     if found >= occurence:
                         emit(format_result(s48, positions_in_radius, pos_biome), f)
+                        batch_matched += 1
+
+            total_matched += batch_matched
 
             # --- progress after each batch ---
             elapsed = time.time() - times
-            prog = f"[Progress] scanned up to {batch_end}  elapsed={elapsed:.1f}s  hits={len(hits)}"
+            if effective_biomes is not None:
+                prog = (
+                    f"[Progress] scanned up to {batch_end}  elapsed={elapsed:.1f}s"
+                    f"  struct_hits={len(hits)}  validated={batch_matched}"
+                    f"  (total struct={total_struct}, total validated={total_matched})"
+                )
+            else:
+                prog = (
+                    f"[Progress] scanned up to {batch_end}  elapsed={elapsed:.1f}s"
+                    f"  hits={len(hits)}  (total={total_struct})"
+                )
             print(prog, flush=True)
             if not to_console and f:
                 f.write(prog + "\n")
