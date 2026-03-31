@@ -104,9 +104,10 @@ def seedsearch():
     def emit(line, f=None):
         """Write a line to the file, or print it if in console mode."""
         if to_console:
-            print(line)
+            print(line, flush=True)
         else:
             f.write(line + "\n")
+            f.flush()
 
     def format_result(seed_out, positions_in_radius, pos_biome):
         """Build the result line for one seed."""
@@ -191,12 +192,13 @@ def seedsearch():
                     emit(format_result(s48, positions_in_radius, pos_biome), f)
 
             # periodic progress to stdout
-            if s48 % 1000000 == 0 and s48 != seedstart:
+            if s48 % 1_000_000 == 0 and s48 != seedstart:
                 elapsed = time.time() - times
                 prog = f"[Progress] scanned up to {s48}  elapsed={elapsed:.1f}s"
-                print(prog)
+                print(prog, flush=True)
                 if not to_console and f:
                     f.write(prog + "\n")
+                    f.flush()
 
         elapsed = time.time() - times
         emit(f"\n# Finished scanning.  Time: {elapsed:.2f}s", f)
