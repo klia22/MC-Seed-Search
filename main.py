@@ -5,7 +5,7 @@ main.py — Seed search loop and all user-facing output.
 import sys
 import time
 import biome as bm
-from structure import getpos
+from structure import getpos, scan_batch
 
 # Force line-buffered stdout so progress lines appear immediately in the
 # workflow console (Python defaults to block-buffered when not a real TTY).
@@ -126,84 +126,92 @@ def seedsearch():
         emit(header, f)
         emit("", f)
 
+        # Warm up the numba JIT so compilation time is not counted in scan time
+        print("Compiling search kernel...", flush=True)
+        scan_batch(0, 1, spacing, separation, salt, linear_sep, radius, occurence)
+        print("Ready — starting scan.\n", flush=True)
+
         times = time.time()
+        BATCH = 1_000_000
+        s = seedstart
 
-        for s48 in range(seedstart, seedend):
+        while s < seedend:
+            batch_end = min(s + BATCH, seedend)
 
-            # periodic progress — must be before any continue so it always fires
-            if s48 % 1_000_000 == 0 and s48 != seedstart:
-                elapsed = time.time() - times
-                prog = f"[Progress] scanned up to {s48}  elapsed={elapsed:.1f}s"
-                print(prog, flush=True)
-                if not to_console and f:
-                    f.write(prog + "\n")
-                    f.flush()
+            # --- fast numba structure scan — returns only seeds that pass ---
+            hits = scan_batch(s, batch_end, spacing, separation, salt,
+                              linear_sep, radius, occurence)
 
-            # ------------------------------------------------------------------
-            # Structure check — uses the 48-bit seed (top bits don't affect it)
-            # ------------------------------------------------------------------
-            i = getpos(s48,  0,  0, spacing, separation, salt, linear_sep)
-            j = getpos(s48, -1,  0, spacing, separation, salt, linear_sep)
-            k = getpos(s48,  0, -1, spacing, separation, salt, linear_sep)
-            l = getpos(s48, -1, -1, spacing, separation, salt, linear_sep)
+            # --- for each structural hit, compute positions + biome check ---
+            for seed_val_raw in hits:
+                s48 = int(seed_val_raw)
 
-            i_in = -radius < i[0] < radius and -radius < i[1] < radius
-            j_in = -radius < j[0] < radius and -radius < j[1] < radius
-            k_in = -radius < k[0] < radius and -radius < k[1] < radius
-            l_in = -radius < l[0] < radius and -radius < l[1] < radius
+                pi = getpos(s48,  0,  0, spacing, separation, salt, linear_sep)
+                pj = getpos(s48, -1,  0, spacing, separation, salt, linear_sep)
+                pk = getpos(s48,  0, -1, spacing, separation, salt, linear_sep)
+                pl = getpos(s48, -1, -1, spacing, separation, salt, linear_sep)
 
-            radius_count = i_in + j_in + k_in + l_in
-            if radius_count < occurence:
-                continue  # structure doesn't match — skip all top-bit variants
+                i_in = -radius < pi[0] < radius and -radius < pi[1] < radius
+                j_in = -radius < pj[0] < radius and -radius < pj[1] < radius
+                k_in = -radius < pk[0] < radius and -radius < pk[1] < radius
+                l_in = -radius < pl[0] < radius and -radius < pl[1] < radius
+                positions_in_radius = [(pi, i_in), (pj, j_in), (pk, k_in), (pl, l_in)]
 
-            positions_in_radius = [(i, i_in), (j, j_in), (k, k_in), (l, l_in)]
+                if expand_16 and biome_gen is not None:
+                    for top in range(0x10000):
+                        full_seed = (top << 48) | (s48 & MASK48)
+                        if full_seed >= (1 << 63):
+                            full_seed -= (1 << 64)
+                        biome_gen.apply_seed(full_seed)
 
-            if expand_16 and biome_gen is not None:
-                for top in range(0x10000):
-                    full_seed = (top << 48) | (s48 & MASK48)
-                    # convert unsigned 64-bit to signed (Minecraft seeds are signed int64)
-                    if full_seed >= (1 << 63):
-                        full_seed -= (1 << 64)
-                    biome_gen.apply_seed(full_seed)
+                        found = 0
+                        pos_biome: dict[tuple, str] = {}
+                        for pos, in_rad in positions_in_radius:
+                            if not in_rad:
+                                continue
+                            bid  = biome_gen.biome_at_block(pos[0], pos[1])
+                            name = biome_gen.biome_name(bid)
+                            pos_biome[pos] = name
+                            if bid in effective_biomes:
+                                found += 1
 
-                    found = 0
+                        if found >= occurence:
+                            emit(format_result(full_seed, positions_in_radius, pos_biome), f)
+
+                else:
                     pos_biome: dict[tuple, str] = {}
-                    for pos, in_rad in positions_in_radius:
-                        if not in_rad:
-                            continue
-                        bid  = biome_gen.biome_at_block(pos[0], pos[1])
-                        name = biome_gen.biome_name(bid)
-                        pos_biome[pos] = name
-                        if bid in effective_biomes:
-                            found += 1
+
+                    if biome_gen is not None:
+                        biome_gen.apply_seed(s48)
+                        found = 0
+                        for pos, in_rad in positions_in_radius:
+                            if not in_rad:
+                                continue
+                            bid  = biome_gen.biome_at_block(pos[0], pos[1])
+                            name = biome_gen.biome_name(bid)
+                            pos_biome[pos] = name
+                            if bid in effective_biomes:
+                                found += 1
+                    else:
+                        found = i_in + j_in + k_in + l_in
 
                     if found >= occurence:
-                        emit(format_result(full_seed, positions_in_radius, pos_biome), f)
+                        emit(format_result(s48, positions_in_radius, pos_biome), f)
 
-            else:
-                pos_biome: dict[tuple, str] = {}
+            # --- progress after each batch ---
+            elapsed = time.time() - times
+            prog = f"[Progress] scanned up to {batch_end}  elapsed={elapsed:.1f}s  hits={len(hits)}"
+            print(prog, flush=True)
+            if not to_console and f:
+                f.write(prog + "\n")
+                f.flush()
 
-                if biome_gen is not None:
-                    biome_gen.apply_seed(s48)
-                    found = 0
-                    for pos, in_rad in positions_in_radius:
-                        if not in_rad:
-                            continue
-                        bid  = biome_gen.biome_at_block(pos[0], pos[1])
-                        name = biome_gen.biome_name(bid)
-                        pos_biome[pos] = name
-                        if bid in effective_biomes:
-                            found += 1
-                else:
-                    found = radius_count
-
-                if found >= occurence:
-                    emit(format_result(s48, positions_in_radius, pos_biome), f)
+            s = batch_end
 
         elapsed = time.time() - times
         emit(f"\n# Finished scanning.  Time: {elapsed:.2f}s", f)
         if not to_console:
-            print(f"Done. Results saved to '{output_file}'.  Time: {elapsed:.2f}s")
+            print(f"Done. Results saved to '{output_file}'.  Time: {elapsed:.2f}s", flush=True)
 
     # ---- dispatch ----------------------------------------------------------
     if to_console:

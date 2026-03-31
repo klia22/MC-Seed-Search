@@ -56,6 +56,76 @@ def mt_extract(mt, idx):
     return y & MASK32, idx + 1
 
 
+@nb.njit(cache=True)
+def _scan_batch(seeds_start, seeds_end, spacing, separation, salt,
+                linear_sep, radius, occurence):
+    """
+    Numba-compiled inner loop.  Scans seeds in [seeds_start, seeds_end) and
+    returns a numpy int64 array of seeds whose structure positions satisfy the
+    radius / occurrence requirements.
+
+    Regions checked (rx, rz): (0,0), (-1,0), (0,-1), (-1,-1).
+    Early exit: once it is impossible for the remaining regions to push the
+    hit count up to `occurence`, the seed is discarded immediately.
+    """
+    spawn_range = spacing - separation
+    R_X = np.int64(341873128712)
+    R_Z = np.int64(132897987541)
+
+    buf   = np.empty(seeds_end - seeds_start, dtype=np.int64)
+    count = np.int64(0)
+
+    for world_seed in range(seeds_start, seeds_end):
+        found = np.int32(0)
+
+        for i in range(4):
+            # region order: (0,0) → (-1,0) → (0,-1) → (-1,-1)
+            rx = np.int64(-(i & 1))
+            rz = np.int64(-((i >> 1) & 1))
+
+            # lower 32 bits of the mixed seed (overflow wraps naturally)
+            seed32 = np.uint32(world_seed + rx * R_X + rz * R_Z + salt)
+
+            mt  = mt_init(seed32)
+            idx = N
+            r0, idx = mt_extract(mt, idx)
+            r1, idx = mt_extract(mt, idx)
+
+            sr = np.int64(spawn_range)
+            if linear_sep:
+                r2, idx = mt_extract(mt, idx)
+                r3, idx = mt_extract(mt, idx)
+                off_x = (np.int64(r0) % sr + np.int64(r1) % sr) // np.int64(2)
+                off_z = (np.int64(r2) % sr + np.int64(r3) % sr) // np.int64(2)
+            else:
+                off_x = np.int64(r0) % sr
+                off_z = np.int64(r1) % sr
+
+            bx = (rx * np.int64(spacing) + off_x) * np.int64(16) + np.int64(8)
+            bz = (rz * np.int64(spacing) + off_z) * np.int64(16) + np.int64(8)
+
+            if -radius < bx < radius and -radius < bz < radius:
+                found += np.int32(1)
+
+            # early exit: remaining regions cannot bring found to occurence
+            if found + np.int32(3 - i) < np.int32(occurence):
+                break
+
+        if found >= np.int32(occurence):
+            buf[count] = world_seed
+            count += np.int64(1)
+
+    return buf[:count]
+
+
+def scan_batch(seeds_start, seeds_end, spacing, separation, salt,
+               linear_sep, radius, occurence):
+    """Python wrapper — triggers numba JIT on first call, cached afterwards."""
+    return _scan_batch(int(seeds_start), int(seeds_end),
+                       int(spacing), int(separation), int(salt),
+                       bool(linear_sep), int(radius), int(occurence))
+
+
 def getpos(world_seed, rx, rz, spacing, separation, salt, linear_separation):
     """
     Return the block-level (x, z) position of a structure candidate in
