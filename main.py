@@ -45,6 +45,14 @@ RNG constants  (Format: Spacing, Separation, Salt, Linear Separation)
   Temples (dependant on biome):       32,  8, 14357617,  0
 """
 
+REGION_ORDER  = [(0, 0), (-1, 0), (0, -1), (-1, -1)]
+REGION_LABELS = {
+    (0,  0):  "( 0, 0) [+X +Z]",
+    (-1, 0):  "(-1, 0) [-X +Z]",
+    (0, -1):  "( 0,-1) [+X -Z]",
+    (-1,-1):  "(-1,-1) [-X -Z]",
+}
+
 PRESETS = {
     "bastion":          (30,  4, 30084232,  False),
     "fortress":         (30,  4, 30084232,  False),
