@@ -76,7 +76,7 @@ def mt_extract(mt, idx):
 # ---------------------------------------------------------------------------
 
 
-@nb.njit(cache=True, parallel=True)
+@nb.njit(cache=True, parallel=True, boundscheck=False)
 def _scan_batch_standard(seeds_start, seeds_end, spacing, separation, salt,
                          radius, occurence):
     """
@@ -87,6 +87,10 @@ def _scan_batch_standard(seeds_start, seeds_end, spacing, separation, salt,
         can optimise register allocation / loop unrolling more aggressively.
       - Partial-MT buffer shrunk to M+2 (399 elements) since only v0 and v1
         are needed; saves 2 MT-init iterations per region (8 per seed).
+      - Region seed-offsets (salt ± R_X ± R_Z) are precomputed once outside
+        prange, eliminating two 64-bit multiplies per region per seed.
+      - boundscheck=False removes per-access bounds checks from the 398-
+        iteration MT init inner loop.
     """
     spawn_range = spacing - separation
     n           = seeds_end - seeds_start
@@ -103,6 +107,26 @@ def _scan_batch_standard(seeds_start, seeds_end, spacing, separation, salt,
     rad         = np.int64(radius)
     occ         = np.int32(occurence)
 
+    # Precompute per-region seed adjustments (salt ± R_X ± R_Z).
+    # Eliminates rx*R_X + rz*R_Z + salt arithmetic inside the hot loop.
+    sa = np.int64(salt)
+    reg_s0 = sa
+    reg_s1 = sa - R_X
+    reg_s2 = sa - R_Z
+    reg_s3 = sa - R_X - R_Z
+
+    # Precompute per-region block-coordinate bases (rx*sp, rz*sp in chunks).
+    # rx is 0 or -1; rz is 0 or -1; multiply by 16 to convert chunks→blocks.
+    neg_sp16 = -sp * np.int64(16)
+    bx_base0 = np.int64(0)
+    bx_base1 = neg_sp16
+    bx_base2 = np.int64(0)
+    bx_base3 = neg_sp16
+    bz_base0 = np.int64(0)
+    bz_base1 = np.int64(0)
+    bz_base2 = neg_sp16
+    bz_base3 = neg_sp16
+
     # Phase 1 — parallel mark pass
     is_hit = np.zeros(n, dtype=np.bool_)
 
@@ -115,10 +139,24 @@ def _scan_batch_standard(seeds_start, seeds_end, spacing, separation, salt,
         mt = np.empty(M + 2, dtype=np.uint32)
 
         for region in range(4):
-            rx = np.int64(-(region & 1))
-            rz = np.int64(-((region >> 1) & 1))
+            if region == 0:
+                s_off  = reg_s0
+                bx_b   = bx_base0
+                bz_b   = bz_base0
+            elif region == 1:
+                s_off  = reg_s1
+                bx_b   = bx_base1
+                bz_b   = bz_base1
+            elif region == 2:
+                s_off  = reg_s2
+                bx_b   = bx_base2
+                bz_b   = bz_base2
+            else:
+                s_off  = reg_s3
+                bx_b   = bx_base3
+                bz_b   = bz_base3
 
-            s32   = np.uint32(world_seed + rx * R_X + rz * R_Z + np.int64(salt))
+            s32   = np.uint32(world_seed + s_off)
             mt[0] = s32
             for k in range(1, M + 2):
                 p     = mt[k - 1]
@@ -150,8 +188,9 @@ def _scan_batch_standard(seeds_start, seeds_end, spacing, separation, salt,
             off_x = np.int64(v0) % sr
             off_z = np.int64(v1) % sr
 
-            bx = (rx * sp + off_x) * np.int64(16) + np.int64(8)
-            bz = (rz * sp + off_z) * np.int64(16) + np.int64(8)
+            # bx_b = rx * spacing * 16  (precomputed); off_x already in chunks
+            bx = bx_b + off_x * np.int64(16) + np.int64(8)
+            bz = bz_b + off_z * np.int64(16) + np.int64(8)
 
             if -rad < bx < rad and -rad < bz < rad:
                 found += np.int32(1)
@@ -177,7 +216,7 @@ def _scan_batch_standard(seeds_start, seeds_end, spacing, separation, salt,
     return result
 
 
-@nb.njit(cache=True, parallel=True)
+@nb.njit(cache=True, parallel=True, boundscheck=False)
 def _scan_batch_linear(seeds_start, seeds_end, spacing, separation, salt,
                        radius, occurence):
     """
@@ -187,6 +226,10 @@ def _scan_batch_linear(seeds_start, seeds_end, spacing, separation, salt,
       - No runtime branch on linear_sep — LLVM sees a clean loop body and
         can optimise register allocation / loop unrolling more aggressively.
       - MT buffer remains M+4 (401 elements) since v2/v3 need mt[M+2]/mt[M+3].
+      - Region seed-offsets (salt ± R_X ± R_Z) are precomputed once outside
+        prange, eliminating two 64-bit multiplies per region per seed.
+      - boundscheck=False removes per-access bounds checks from the 401-
+        iteration MT init inner loop.
     """
     spawn_range = spacing - separation
     n           = seeds_end - seeds_start
@@ -203,6 +246,23 @@ def _scan_batch_linear(seeds_start, seeds_end, spacing, separation, salt,
     rad         = np.int64(radius)
     occ         = np.int32(occurence)
 
+    # Precompute per-region seed adjustments and block-coordinate bases.
+    sa = np.int64(salt)
+    reg_s0 = sa
+    reg_s1 = sa - R_X
+    reg_s2 = sa - R_Z
+    reg_s3 = sa - R_X - R_Z
+
+    neg_sp16 = -sp * np.int64(16)
+    bx_base0 = np.int64(0)
+    bx_base1 = neg_sp16
+    bx_base2 = np.int64(0)
+    bx_base3 = neg_sp16
+    bz_base0 = np.int64(0)
+    bz_base1 = np.int64(0)
+    bz_base2 = neg_sp16
+    bz_base3 = neg_sp16
+
     # Phase 1 — parallel mark pass
     is_hit = np.zeros(n, dtype=np.bool_)
 
@@ -213,10 +273,24 @@ def _scan_batch_linear(seeds_start, seeds_end, spacing, separation, salt,
         mt = np.empty(M + 4, dtype=np.uint32)
 
         for region in range(4):
-            rx = np.int64(-(region & 1))
-            rz = np.int64(-((region >> 1) & 1))
+            if region == 0:
+                s_off = reg_s0
+                bx_b  = bx_base0
+                bz_b  = bz_base0
+            elif region == 1:
+                s_off = reg_s1
+                bx_b  = bx_base1
+                bz_b  = bz_base1
+            elif region == 2:
+                s_off = reg_s2
+                bx_b  = bx_base2
+                bz_b  = bz_base2
+            else:
+                s_off = reg_s3
+                bx_b  = bx_base3
+                bz_b  = bz_base3
 
-            s32   = np.uint32(world_seed + rx * R_X + rz * R_Z + np.int64(salt))
+            s32   = np.uint32(world_seed + s_off)
             mt[0] = s32
             for k in range(1, M + 4):
                 p     = mt[k - 1]
@@ -268,8 +342,8 @@ def _scan_batch_linear(seeds_start, seeds_end, spacing, separation, salt,
             off_x = (np.int64(v0) % sr + np.int64(v1) % sr) // np.int64(2)
             off_z = (np.int64(v2) % sr + np.int64(v3) % sr) // np.int64(2)
 
-            bx = (rx * sp + off_x) * np.int64(16) + np.int64(8)
-            bz = (rz * sp + off_z) * np.int64(16) + np.int64(8)
+            bx = bx_b + off_x * np.int64(16) + np.int64(8)
+            bz = bz_b + off_z * np.int64(16) + np.int64(8)
 
             if -rad < bx < rad and -rad < bz < rad:
                 found += np.int32(1)
