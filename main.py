@@ -277,7 +277,7 @@ def _print_structure_probabilities(sp, sep, x1, z1, x2, z2, label):
         # Format probability nicely
         if prob_str == "0 (impossible)":
             display_str = prob_str
-        elif prob_str.startswith("1 in 1"):
+        elif prob_str == "1 in 1":
             display_str = "100% (all possible)"
         else:
             # Extract the number and show percentage too
@@ -293,7 +293,7 @@ def _print_structure_probabilities(sp, sep, x1, z1, x2, z2, label):
     overall_str = probs["overall"]
     if overall_str == "0 (impossible)":
         overall_display = overall_str
-    elif overall_str.startswith("1 in 1"):
+    elif overall_str == "1 in 1":
         overall_display = "100% (all possible)"
     else:
         try:
