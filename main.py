@@ -223,12 +223,15 @@ def _prompt_structure_constraint(idx):
                 specific_positions = {}
                 for rx, rz in specific_quadrants:
                     pos_input = input(
-                        f"  Positions for quadrant ({rx},{rz}) (point list like x1,z1 x2,z2 or range x1,z1-x2,z2) [auto]: "
+                        f"  Positions for quadrant ({rx},{rz}) (point list like x1,z1 x2,z2 or range x1,z1-x2,z2 or from x1,z1 to x2,z2) [auto]: "
                     ).strip()
                     if pos_input:
                         try:
-                            # Range format: x1,z1-x2,z2
+                            # Range format: x1,z1-x2,z2 or from x1,z1 to x2,z2
                             m = re.match(r"^\s*\(?\s*(-?\d+)\s*[ ,]\s*(-?\d+)\s*\)?\s*-\s*\(?\s*(-?\d+)\s*[ ,]\s*(-?\d+)\s*\)?\s*$", pos_input)
+                            if not m:
+                                # Try "from x1,z1 to x2,z2" format
+                                m = re.match(r"^\s*from\s+\(?\s*(-?\d+)\s*[ ,]\s*(-?\d+)\s*\)?\s+to\s+\(?\s*(-?\d+)\s*[ ,]\s*(-?\d+)\s*\)?\s*$", pos_input, re.IGNORECASE)
                             if m:
                                 x1r, z1r, x2r, z2r = map(int, m.groups())
                                 if x1r > x2r:
@@ -405,13 +408,17 @@ def _check_struct_positions(s48, c):
                 found += 1
 
         else:
-            # Explicit point list
-            for pos in pos_spec:
-                bx, bz = pos
-                in_box = c["x1"] < bx < c["x2"] and c["z1"] < bz < c["z2"]
-                positions.append(((rx, rz), pos, in_box))
-                if in_box:
-                    found += 1
+            # Explicit point list - structure must generate at exactly one of these coordinates
+            pos = getpos(s48, rx, rz,
+                         c["spacing"], c["separation"], c["salt"], c["linear_sep"],
+                         c["offx"], c["offy"])
+            bx, bz = pos
+            # Check if calculated position matches any specified point
+            matches_point = any(bx == px and bz == pz for px, pz in pos_spec)
+            in_box = matches_point and (c["x1"] < bx < c["x2"] and c["z1"] < bz < c["z2"])
+            positions.append(((rx, rz), pos, in_box))
+            if in_box:
+                found += 1
 
     return positions, found
 
