@@ -9,12 +9,25 @@ either a structure preset or a custom biome list.
 
 import ctypes
 import os
+import sys
 
 # ---------------------------------------------------------------------------
-# Load the shared library
+# Load the shared library (cross-platform)
 # ---------------------------------------------------------------------------
+if sys.platform == "win32":
+    _LIB_NAME = "libcubiomes.dll"
+elif sys.platform == "darwin":
+    _LIB_NAME = "libcubiomes.dylib"
+else:  # linux and others
+    _LIB_NAME = "libcubiomes.so"
+
 _LIB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         "cubiomes", "libcubiomes.so")
+                         "cubiomes", _LIB_NAME)
+
+if not os.path.exists(_LIB_PATH):
+    raise FileNotFoundError(f"Required library not found: {_LIB_PATH}. "
+                            f"Please ensure cubiomes is compiled for your platform.")
+
 _lib = ctypes.CDLL(_LIB_PATH)
 
 # Opaque buffer size — must match sizeof(Generator) from cubiomes
