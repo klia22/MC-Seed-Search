@@ -68,7 +68,7 @@ SeedEnd: 1000000
 Output to console (c) or file (f)? c
 Structure type: village
 Bounds type: radius
-Radius: 1000
+Radius: 200
 Min occurrence: 1
 Use biome filters? n
 Expand-16 mode? n
