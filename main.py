@@ -190,19 +190,28 @@ def _calculate_structure_probability(sp, sep, x1, z1, x2, z2):
     the search bounds. Expresses as "1 in X" format.
     
     Args:
-        sp: spacing
-        sep: separation
-        x1, z1, x2, z2: search bounds
+        sp: spacing (in chunks)
+        sep: separation (in chunks)
+        x1, z1, x2, z2: search bounds (in blocks)
     
     Returns:
         dict with probabilities for each quadrant and overall
     """
-    # Allowed zones for each quadrant (where structures can actually spawn)
+    # Convert spacing/separation from chunks to blocks (1 chunk = 16 blocks)
+    sp_blocks = sp * 16
+    sep_blocks = sep * 16
+    allowed_size_blocks = (sp_blocks - sep_blocks)  # Size of allowed zone in blocks
+    
+    # Allowed zones for each quadrant (in blocks, where structures can actually spawn)
     QUADRANT_ALLOWED = {
-        (0, 0):   {"x_min": 0,     "x_max": sp - sep, "z_min": 0,     "z_max": sp - sep},
-        (-1, 0):  {"x_min": -sp,   "x_max": -sep,     "z_min": 0,     "z_max": sp - sep},
-        (0, -1):  {"x_min": 0,     "x_max": sp - sep, "z_min": -sp,   "z_max": -sep},
-        (-1, -1): {"x_min": -sp,   "x_max": -sep,     "z_min": -sp,   "z_max": -sep},
+        (0, 0):   {"x_min": 0,              "x_max": allowed_size_blocks,     
+                   "z_min": 0,              "z_max": allowed_size_blocks},
+        (-1, 0):  {"x_min": -sp_blocks,     "x_max": -sep_blocks,            
+                   "z_min": 0,              "z_max": allowed_size_blocks},
+        (0, -1):  {"x_min": 0,              "x_max": allowed_size_blocks,    
+                   "z_min": -sp_blocks,     "z_max": -sep_blocks},
+        (-1, -1): {"x_min": -sp_blocks,     "x_max": -sep_blocks,            
+                   "z_min": -sp_blocks,     "z_max": -sep_blocks},
     }
     
     probabilities = {}
