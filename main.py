@@ -255,7 +255,7 @@ def _print_structure_probabilities(sp, sep, x1, z1, x2, z2, label):
     probs = _calculate_structure_probability(sp, sep, x1, z1, x2, z2)
     
     print("\n  Probability of structure in valid range:")
-    print("  " + "-" * 50)
+    print("  " + "-" * 55)
     quad_labels = {
         (0, 0):   "[+X +Z]",
         (-1, 0):  "[-X +Z]",
@@ -265,10 +265,35 @@ def _print_structure_probabilities(sp, sep, x1, z1, x2, z2, label):
     
     for quad in [(0, 0), (-1, 0), (0, -1), (-1, -1)]:
         prob_str = probs.get(quad, "unknown")
-        print(f"    Quadrant {quad_labels[quad]:12} : {prob_str}")
+        # Format probability nicely
+        if prob_str == "0 (impossible)":
+            display_str = prob_str
+        elif prob_str.startswith("1 in 1"):
+            display_str = "100% (all possible)"
+        else:
+            # Extract the number and show percentage too
+            try:
+                ratio = int(prob_str.split()[-1])
+                percent = 100 / ratio
+                display_str = f"{prob_str:15} ({percent:.1f}%)"
+            except:
+                display_str = prob_str
+        print(f"    Quadrant {quad_labels[quad]:12} : {display_str}")
     
-    print("  " + "-" * 50)
-    print(f"    All quadrants        : {probs['overall']}")
+    print("  " + "-" * 55)
+    overall_str = probs["overall"]
+    if overall_str == "0 (impossible)":
+        overall_display = overall_str
+    elif overall_str.startswith("1 in 1"):
+        overall_display = "100% (all possible)"
+    else:
+        try:
+            ratio = int(overall_str.split()[-1])
+            percent = 100 / ratio
+            overall_display = f"{overall_str:15} ({percent:.1f}%)"
+        except:
+            overall_display = overall_str
+    print(f"    All quadrants        : {overall_display}")
     print()
 
 
