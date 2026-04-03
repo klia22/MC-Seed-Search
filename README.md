@@ -76,12 +76,12 @@ Expand-16 mode? n
 
 ## Features
 
-- ⚡ **High Performance**: JIT-compiled search kernels for 50M+ seeds/second
-- 🎯 **Accurate**: Uses Minecraft's exact RNG algorithms
-- 🏗️ **Multiple Structures**: Support for villages, temples, ships, etc.
-- 🌍 **Biome Validation**: Optional biome checking at structure positions
-- 📦 **Standalone**: Windows .exe with no dependencies
-- 🔧 **Flexible**: Multiple constraint types and search strategies
+- **High Performance**: JIT-compiled search kernels for 50M+ seeds/second
+- **Accurate**: Uses Minecraft's exact RNG algorithms
+- **Multiple Structures**: Support for villages, temples, ships, etc.
+- **Biome Validation**: Optional biome checking at structure positions
+- **Standalone**: Windows .exe with no dependencies
+- **Flexible**: Multiple constraint types and search strategies
 
 ---
 
