@@ -1,3 +1,6 @@
+# Quick Start
+Go to the Releases section and download the latest .exe file. No additional setup is required.
+
 # Minecraft Bedrock Structure Seed Searcher - Technical Guide
 
 This tool brute-forces Minecraft Bedrock seeds to find worlds where structures generate at specific coordinates. It implements the exact same RNG algorithms Minecraft uses for structure placement.

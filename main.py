@@ -247,9 +247,7 @@ def _prompt_structure_constraint(idx):
     if occ < 4 and struct_type != "stronghold":
         ans = input(
             "  Specify specific quadrants and positions? (y/n) [n]\n"
-            "    Allows choosing which quadrants to check and custom positions\n"
-            "    for each structure instance.\n"
-            "    (y/n) [n]: "
+"
         ).strip().lower()
         if ans in ("y", "yes"):
             print("  Quadrants: (0,0)=[+X +Z], (-1,0)=[-X +Z], (0,-1)=[+X -Z], (-1,-1)=[-X -Z]")
@@ -295,13 +293,6 @@ def _prompt_structure_constraint(idx):
                                 if z1r > z2r:
                                     z1r, z2r = z2r, z1r
                                 specific_positions[(rx, rz)] = (x1r, z1r, x2r, z2r)
-                            else:
-                                # Point list form: 100,200 300,400 OR 100 200 ...
-                                coords = [int(tok) for tok in re.split(r"[\s,]+", pos_input.strip()) if tok]
-                                if len(coords) % 2 != 0:
-                                    raise ValueError("odd count")
-                                points = [(coords[i], coords[i+1]) for i in range(0, len(coords), 2)]
-                                specific_positions[(rx, rz)] = points
                         except Exception:
                             print(f"  Invalid position format for ({rx},{rz}) — using auto positions.")
                             specific_positions[(rx, rz)] = None
@@ -349,8 +340,6 @@ def _prompt_structure_constraint(idx):
     if struct_type != "stronghold":
         ans = input(
             "  Use independent biome checks per quadrant? (y/n) [n]\n"
-            "    Allows different biome filters for each quadrant.\n"
-            "    (y/n) [n]: "
         ).strip().lower()
         if ans in ("y", "yes"):
             quadrants = specific_quadrants if specific_quadrants else [(0,0), (-1,0), (0,-1), (-1,-1)]
@@ -378,9 +367,6 @@ def _prompt_structure_constraint(idx):
     if needs_biome_gen:
         ans = input(
             "  4-corner biome check? (y/n) [n]\n"
-            "    Checks structure position + 4 chunk corners (5 points).\n"
-            "    All must be in the allowed biome set.\n"
-            "    (y/n) [n]: "
         ).strip().lower()
         corner_check = ans in ("y", "yes")
         print("    4-corner check ON." if corner_check else "    4-corner check OFF.")
@@ -409,9 +395,6 @@ def _prompt_structure_constraint(idx):
 def _prompt_biome_constraint(idx):
     """
     Prompt for a fixed-coordinate biome constraint.
-
-    The user enters a world position and a set of allowed biomes.
-    Returns a constraint dict, or None if the user left the biome list blank.
     """
     print(f"\n=== Biome Point Constraint {idx} ===")
     print("  Check the biome at a fixed world coordinate.")
@@ -803,9 +786,6 @@ def seedsearch():
         print()
         ans = input(
             "Enable 32-bit structure scan with 32-bit biome expansion?\n"
-            "  (Scan 32-bit seeds for structure, then test the first N upper\n"
-            "   32-bit variants for biome — much faster than a full 2^32 expansion.)\n"
-            "  (y/n) [n]: "
         ).strip().lower()
         expand_mode = ans in ("y", "yes")
         if expand_mode:

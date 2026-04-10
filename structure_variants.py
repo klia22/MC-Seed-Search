@@ -43,9 +43,7 @@ def is_village_biome(biome_id):
 def region_seed(world_seed, region_x, region_z, salt):
     """
     Calculate the region seed for a given world seed, region coordinates,
-    and structure salt (used for bastion/fortress/portal).
-    
-    Formula: regZ * -245998635 + regX * -1724254968 + worldSeed + salt
+    and structure salt.
     """
     mixed = (world_seed + region_x * -1724254968 + region_z * -245998635 + salt) & 0xffffffff
     return mixed
