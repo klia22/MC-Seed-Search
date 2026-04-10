@@ -926,7 +926,7 @@ def seedsearch():
         print("Ready — starting scan.\n", flush=True)
 
         times         = time.time()
-        BATCH         = 25_000_000
+        BATCH         = 10_000_000
         s             = seedstart
         total_jit     = 0   # seeds from JIT kernel (before Python box filter)
         total_struct   = 0   # seeds passing all structure constraint box checks
@@ -942,7 +942,7 @@ def seedsearch():
                     f"[Progress] scanned up to {s}"
                     f"  elapsed={elapsed:.1f}s"
                 )
-            else:
+            else if batch_end < BATCH:
                 prog = (
                     f"[Progress] scanned up to {batch_end - BATCH}"
                     f"  elapsed={elapsed:.1f}s"
