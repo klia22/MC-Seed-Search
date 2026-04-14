@@ -64,33 +64,12 @@ def mt_extract(mt, idx):
     return y, idx + 1
 
 
-# ---------------------------------------------------------------------------
-# Inline temper macro — applied after each twist computation
-# ---------------------------------------------------------------------------
-# Used identically in both scan kernels; kept as a comment for clarity.
-#
-#   v ^= v >> 11
-#   v ^= (v << 7)  & 0x9D2C5680
-#   v ^= (v << 15) & 0xEFC60000
-#   v ^= v >> 18
-# ---------------------------------------------------------------------------
-
 
 @nb.njit(cache=True, parallel=True, boundscheck=False)
 def _scan_batch_standard(seeds_start, seeds_end, spacing, separation, salt,
                          radius, occurence):
     """
     Specialised scanner for linear_sep=False (standard two-draw placement).
-
-    Optimisations vs the old unified kernel:
-      - No runtime branch on linear_sep — LLVM sees a clean loop body and
-        can optimise register allocation / loop unrolling more aggressively.
-      - Partial-MT buffer shrunk to M+2 (399 elements) since only v0 and v1
-        are needed; saves 2 MT-init iterations per region (8 per seed).
-      - Region seed-offsets (salt ± R_X ± R_Z) are precomputed once outside
-        prange, eliminating two 64-bit multiplies per region per seed.
-      - boundscheck=False removes per-access bounds checks from the 398-
-        iteration MT init inner loop.
     """
     spawn_range = spacing - separation
     n           = seeds_end - seeds_start
@@ -221,15 +200,6 @@ def _scan_batch_linear(seeds_start, seeds_end, spacing, separation, salt,
                        radius, occurence):
     """
     Specialised scanner for linear_sep=True (averaged four-draw placement).
-
-    Optimisations vs the old unified kernel:
-      - No runtime branch on linear_sep — LLVM sees a clean loop body and
-        can optimise register allocation / loop unrolling more aggressively.
-      - MT buffer remains M+4 (401 elements) since v2/v3 need mt[M+2]/mt[M+3].
-      - Region seed-offsets (salt ± R_X ± R_Z) are precomputed once outside
-        prange, eliminating two 64-bit multiplies per region per seed.
-      - boundscheck=False removes per-access bounds checks from the 401-
-        iteration MT init inner loop.
     """
     spawn_range = spacing - separation
     n           = seeds_end - seeds_start
@@ -373,11 +343,6 @@ def scan_batch(seeds_start, seeds_end, spacing, separation, salt,
                linear_sep, radius, occurence):
     """
     Python wrapper — dispatches to the correct specialised JIT kernel.
-
-    Using two separate compiled functions (instead of a single function with
-    a runtime boolean flag) lets LLVM optimise each kernel in isolation:
-    no dead-code paths, no unused register pressure, and different partial-MT
-    buffer sizes for the two cases.
     """
     args = (int(seeds_start), int(seeds_end),
             int(spacing), int(separation), int(salt),
@@ -392,17 +357,6 @@ def getpos(world_seed, rx, rz, spacing, separation, salt, linear_separation,
     """
     Return the block-level (x, z) position of a structure candidate in
     region (rx, rz) for the given world seed and structure RNG constants.
-
-    Parameters
-    ----------
-    world_seed       : 32-bit world seed
-    rx, rz           : region coordinates (integers)
-    spacing          : region size in chunks
-    separation       : minimum separation in chunks
-    salt             : structure-specific RNG salt
-    linear_separation: if True uses the averaged two-draw algorithm
-    offx, offy       : intra-chunk block offset added to the chunk origin
-                       (default 8 = chunk centre, Bedrock's standard placement)
     """
     spawn_range = spacing - separation
     mixed  = (world_seed + rx * 341873128712 + rz * 132897987541 + salt) & ((1 << 64) - 1)

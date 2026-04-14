@@ -138,7 +138,7 @@ PRESET_NAMES = [
 # ---------------------------------------------------------------------------
 # UI helpers — constraint input
 # ---------------------------------------------------------------------------
-
+Error=16
 def _prompt_rng():
     print()
     print("  Available presets:")
@@ -246,10 +246,7 @@ def _prompt_structure_constraint(idx):
     # Skip quadrant-specific prompts for stronghold (doesn't use standard quadrant placement)
     if occ < 4 and struct_type != "stronghold":
         ans = input(
-            "  Specify specific quadrants and positions? (y/n) [n]\n"
-            "    Allows choosing which quadrants to check and custom positions\n"
-            "    for each structure instance.\n"
-            "    (y/n) [n]: "
+            "  Specify specific quadrants and positions? (y/n) [n]"
         ).strip().lower()
         if ans in ("y", "yes"):
             print("  Quadrants: (0,0)=[+X +Z], (-1,0)=[-X +Z], (0,-1)=[+X -Z], (-1,-1)=[-X -Z]")
@@ -273,7 +270,7 @@ def _prompt_structure_constraint(idx):
                 specific_positions = {}
                 for rx, rz in specific_quadrants:
                     pos_input = input(
-                        f"  Positions for quadrant ({rx},{rz}) (point list like x1,z1 x2,z2 or range x1,z1-x2,z2 or 'from x1,z1 to x2,z2') [auto]: "
+                        f"  Positions for quadrant ({rx},{rz}) (range x1,z1-x2,z2 or 'from x1,z1 to x2,z2') [auto]: "
                     ).strip()
                     if pos_input:
                         try:
@@ -295,13 +292,6 @@ def _prompt_structure_constraint(idx):
                                 if z1r > z2r:
                                     z1r, z2r = z2r, z1r
                                 specific_positions[(rx, rz)] = (x1r, z1r, x2r, z2r)
-                            else:
-                                # Point list form: 100,200 300,400 OR 100 200 ...
-                                coords = [int(tok) for tok in re.split(r"[\s,]+", pos_input.strip()) if tok]
-                                if len(coords) % 2 != 0:
-                                    raise ValueError("odd count")
-                                points = [(coords[i], coords[i+1]) for i in range(0, len(coords), 2)]
-                                specific_positions[(rx, rz)] = points
                         except Exception:
                             print(f"  Invalid position format for ({rx},{rz}) — using auto positions.")
                             specific_positions[(rx, rz)] = None
@@ -348,9 +338,7 @@ def _prompt_structure_constraint(idx):
     # Skip independent biome checks per quadrant for stronghold (doesn't use standard quadrant placement)
     if struct_type != "stronghold":
         ans = input(
-            "  Use independent biome checks per quadrant? (y/n) [n]\n"
-            "    Allows different biome filters for each quadrant.\n"
-            "    (y/n) [n]: "
+            "  Use independent biome checks per quadrant? (y/n) [n]"
         ).strip().lower()
         if ans in ("y", "yes"):
             quadrants = specific_quadrants if specific_quadrants else [(0,0), (-1,0), (0,-1), (-1,-1)]
@@ -377,13 +365,12 @@ def _prompt_structure_constraint(idx):
 
     if needs_biome_gen:
         ans = input(
-            "  4-corner biome check? (y/n) [n]\n"
-            "    Checks structure position + 4 chunk corners (5 points).\n"
-            "    All must be in the allowed biome set.\n"
-            "    (y/n) [n]: "
+            "  4-corner biome check? (y/n) [n]"
         ).strip().lower()
         corner_check = ans in ("y", "yes")
         print("    4-corner check ON." if corner_check else "    4-corner check OFF.")
+        if corner_check:
+            Error=int(input("    Error margin for corner check [16]: ").strip() or "16")
 
     return {
         "type":        "structure",
@@ -409,9 +396,6 @@ def _prompt_structure_constraint(idx):
 def _prompt_biome_constraint(idx):
     """
     Prompt for a fixed-coordinate biome constraint.
-
-    The user enters a world position and a set of allowed biomes.
-    Returns a constraint dict, or None if the user left the biome list blank.
     """
     print(f"\n=== Biome Point Constraint {idx} ===")
     print("  Check the biome at a fixed world coordinate.")
@@ -444,7 +428,7 @@ def _prompt_biome_constraint(idx):
 # Runtime helpers
 # ---------------------------------------------------------------------------
 
-def _classify_variant(seed32, struct_type, chunk_x, chunk_z, chunk_bx, chunk_bz, spacing, variant_filter=None):
+def _classify_variant(seed32, struct_type, chunk_x, chunk_z, chunk_bx, chunk_bz, spacing, variant_filter):
     """Helper to classify structure variant based on type.
     
     Args:
@@ -458,8 +442,8 @@ def _classify_variant(seed32, struct_type, chunk_x, chunk_z, chunk_bx, chunk_bz,
     Returns: (variant_label, matches_filter) or None if doesn't match filter
     """
     # Compute region coordinates from chunk coordinates
-    region_x = chunk_x // spacing if spacing else 0
-    region_z = chunk_z // spacing if spacing else 0
+    region_x = 0 if chunk_x >= 0 else -1
+    region_z = 0 if chunk_z >= 0 else -1
     
     if struct_type == "bastion":
         structure_name, bastion_type = sv.classify_bastion_or_fortress(seed32, region_x, region_z)
@@ -472,7 +456,7 @@ def _classify_variant(seed32, struct_type, chunk_x, chunk_z, chunk_bx, chunk_bz,
             return variant_label
         else:
             # It's a fortress, not bastion
-            return None if (struct_type == "bastion" and variant_filter is not None) else "fortress"
+            return None
     elif struct_type == "fortress":
         structure_name, _ = sv.classify_bastion_or_fortress(seed32, region_x, region_z)
         return "fortress" if structure_name == "fortress" else None
@@ -540,7 +524,6 @@ def _check_struct_positions(s32, c, biome_gen=None):
         pos_spec = None
         if c.get("specific_positions") and (rx, rz) in c["specific_positions"]:
             pos_spec = c["specific_positions"][(rx, rz)]
-
         if pos_spec is None:
             # Auto position for this quadrant
             pos = getpos(s32, rx, rz,
@@ -553,9 +536,12 @@ def _check_struct_positions(s32, c, biome_gen=None):
                 try:
                     chunk_x, chunk_z = bx >> 4, bz >> 4
                     variant = _classify_variant(s32, c["struct_type"], chunk_x, chunk_z, bx, bz, c["spacing"], c.get("variant_filter"))
-                    if variant:
+                    if not variant:
+                        in_box = False
+                    if variant != None:
                         c["variants"][pos] = variant
                 except Exception:
+                    print("Exception")
                     pass  # Silently skip variant classification errors
             positions.append(((rx, rz), pos, in_box))
             if in_box:
@@ -574,7 +560,9 @@ def _check_struct_positions(s32, c, biome_gen=None):
                 try:
                     chunk_x, chunk_z = bx >> 4, bz >> 4
                     variant = _classify_variant(s32, c["struct_type"], chunk_x, chunk_z, bx, bz, c["spacing"], c.get("variant_filter"))
-                    if variant:
+                    if not variant:
+                        in_box = False 
+                    if variant != None:
                         c["variants"][pos] = variant
                 except Exception:
                     pass
@@ -582,32 +570,10 @@ def _check_struct_positions(s32, c, biome_gen=None):
             if in_box:
                 found += 1
 
-        else:
-            # Explicit point list - calculate actual position and check if it matches any specified point
-            actual_pos = getpos(s32, rx, rz,
-                         c["spacing"], c["separation"], c["salt"], c["linear_sep"],
-                         c["offx"], c["offy"])
-            bx, bz = actual_pos
-            # Check if actual position matches any specified point
-            matches_point = any(bx == px and bz == pz for px, pz in pos_spec)
-            in_box = matches_point and (c["x1"] < bx < c["x2"] and c["z1"] < bz < c["z2"])
-            # Classify variant if applicable
-            if in_box and c.get("struct_type"):
-                try:
-                    chunk_x, chunk_z = bx >> 4, bz >> 4
-                    variant = _classify_variant(s32, c["struct_type"], chunk_x, chunk_z, bx, bz, c["spacing"], c.get("variant_filter"))
-                    if variant:
-                        c["variants"][actual_pos] = variant
-                except Exception:
-                    pass
-            positions.append(((rx, rz), actual_pos, in_box))
-            if in_box:
-                found += 1
-
     return positions, found
 
 
-def _biome_passes(gen, pos, biomes, corner_check, offx, offy):
+def _biome_passes(gen, pos, biomes, corner_check, offx, offy, error):
     bx, bz = pos
     bid  = gen.biome_at_block(bx, bz)
     name = gen.biome_name(bid)
@@ -618,9 +584,9 @@ def _biome_passes(gen, pos, biomes, corner_check, offx, offy):
         cz0 = bz - offy
         if not (
             gen.biome_at_block(cx0,      cz0)      in biomes
-            and gen.biome_at_block(cx0 + 16, cz0)      in biomes
-            and gen.biome_at_block(cx0,      cz0 + 16) in biomes
-            and gen.biome_at_block(cx0 + 16, cz0 + 16) in biomes
+            and gen.biome_at_block(cx0 + error, cz0)      in biomes
+            and gen.biome_at_block(cx0,      cz0 + error) in biomes
+            and gen.biome_at_block(cx0 + error, cz0 + error) in biomes
         ):
             return False, name
     return True, name
@@ -650,7 +616,7 @@ def _check_biomes(gen, struct_constraints, all_positions, biome_constraints):
                 seen += 1
                 continue
             ok, name = _biome_passes(gen, pos, biomes, c["corner_check"],
-                                     c["offx"], c["offy"])
+                                     c["offx"], c["offy"], Error)
             pos_biome[pos] = name
             if ok:
                 found += 1
@@ -802,10 +768,7 @@ def seedsearch():
     if needs_biome_gen:
         print()
         ans = input(
-            "Enable 32-bit structure scan with 32-bit biome expansion?\n"
-            "  (Scan 32-bit seeds for structure, then test the first N upper\n"
-            "   32-bit variants for biome — much faster than a full 2^32 expansion.)\n"
-            "  (y/n) [n]: "
+            "Enable 32-bit structure scan with 32-bit biome expansion?"
         ).strip().lower()
         expand_mode = ans in ("y", "yes")
         if expand_mode:
@@ -947,7 +910,7 @@ def seedsearch():
         print("Ready — starting scan.\n", flush=True)
 
         times         = time.time()
-        BATCH         = 25_000_000
+        BATCH         = 10_000_000
         s             = seedstart
         total_jit     = 0   # seeds from JIT kernel (before Python box filter)
         total_struct   = 0   # seeds passing all structure constraint box checks
@@ -963,11 +926,16 @@ def seedsearch():
                     f"[Progress] scanned up to {s}"
                     f"  elapsed={elapsed:.1f}s"
                 )
-            else:
+            elif batch_end > seedstart + BATCH:
                 prog = (
                     f"[Progress] scanned up to {batch_end - BATCH}"
                     f"  elapsed={elapsed:.1f}s"
                     f"  hits={batch_struct}  (total={total_struct})"
+                    f"  percent={100 * (batch_end - BATCH - seedstart) / (seedend - seedstart):.3f}%"
+                )
+            else:
+                prog = (
+                    "Starting Search..."
                 )
             print(prog, flush=True)
             if not to_console and f:
