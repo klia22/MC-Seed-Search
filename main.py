@@ -426,7 +426,7 @@ def _prompt_biome_constraint(idx):
 # Runtime helpers
 # ---------------------------------------------------------------------------
 
-def _classify_variant(seed32, struct_type, chunk_x, chunk_z, chunk_bx, chunk_bz, spacing, variant_filter=None):
+def _classify_variant(seed32, struct_type, chunk_x, chunk_z, chunk_bx, chunk_bz, spacing, variant_filter):
     """Helper to classify structure variant based on type.
     
     Args:
@@ -454,7 +454,7 @@ def _classify_variant(seed32, struct_type, chunk_x, chunk_z, chunk_bx, chunk_bz,
             return variant_label
         else:
             # It's a fortress, not bastion
-            return None if (struct_type == "bastion" and variant_filter is not None) else "fortress"
+            return None
     elif struct_type == "fortress":
         structure_name, _ = sv.classify_bastion_or_fortress(seed32, region_x, region_z)
         return "fortress" if structure_name == "fortress" else None
@@ -522,7 +522,6 @@ def _check_struct_positions(s32, c, biome_gen=None):
         pos_spec = None
         if c.get("specific_positions") and (rx, rz) in c["specific_positions"]:
             pos_spec = c["specific_positions"][(rx, rz)]
-
         if pos_spec is None:
             # Auto position for this quadrant
             pos = getpos(s32, rx, rz,
@@ -535,9 +534,12 @@ def _check_struct_positions(s32, c, biome_gen=None):
                 try:
                     chunk_x, chunk_z = bx >> 4, bz >> 4
                     variant = _classify_variant(s32, c["struct_type"], chunk_x, chunk_z, bx, bz, c["spacing"], c.get("variant_filter"))
-                    if variant:
+                    if not variant:
+                        in_box = False
+                    if variant != None:
                         c["variants"][pos] = variant
                 except Exception:
+                    print("Exception")
                     pass  # Silently skip variant classification errors
             positions.append(((rx, rz), pos, in_box))
             if in_box:
@@ -556,33 +558,13 @@ def _check_struct_positions(s32, c, biome_gen=None):
                 try:
                     chunk_x, chunk_z = bx >> 4, bz >> 4
                     variant = _classify_variant(s32, c["struct_type"], chunk_x, chunk_z, bx, bz, c["spacing"], c.get("variant_filter"))
-                    if variant:
+                    if not variant:
+                        in_box = False 
+                    if variant != None:
                         c["variants"][pos] = variant
                 except Exception:
                     pass
             positions.append(((rx, rz), pos, in_box))
-            if in_box:
-                found += 1
-
-        else:
-            # Explicit point list - calculate actual position and check if it matches any specified point
-            actual_pos = getpos(s32, rx, rz,
-                         c["spacing"], c["separation"], c["salt"], c["linear_sep"],
-                         c["offx"], c["offy"])
-            bx, bz = actual_pos
-            # Check if actual position matches any specified point
-            matches_point = any(bx == px and bz == pz for px, pz in pos_spec)
-            in_box = matches_point and (c["x1"] < bx < c["x2"] and c["z1"] < bz < c["z2"])
-            # Classify variant if applicable
-            if in_box and c.get("struct_type"):
-                try:
-                    chunk_x, chunk_z = bx >> 4, bz >> 4
-                    variant = _classify_variant(s32, c["struct_type"], chunk_x, chunk_z, bx, bz, c["spacing"], c.get("variant_filter"))
-                    if variant:
-                        c["variants"][actual_pos] = variant
-                except Exception:
-                    pass
-            positions.append(((rx, rz), actual_pos, in_box))
             if in_box:
                 found += 1
 
@@ -942,11 +924,12 @@ def seedsearch():
                     f"[Progress] scanned up to {s}"
                     f"  elapsed={elapsed:.1f}s"
                 )
-            elif batch_end >= BATCH:
+            elif batch_end > seedstart + BATCH:
                 prog = (
                     f"[Progress] scanned up to {batch_end - BATCH}"
                     f"  elapsed={elapsed:.1f}s"
                     f"  hits={batch_struct}  (total={total_struct})"
+                    f"  percent={100 * (batch_end - BATCH - seedstart) / (seedend - seedstart):.3f}%"
                 )
             else:
                 prog = (
