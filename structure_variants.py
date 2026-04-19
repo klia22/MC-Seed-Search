@@ -100,7 +100,6 @@ def classify_bastion_or_fortress(world_seed, region_x, region_z):
     # Third call determines bastion vs fortress
     x1, idx = mt_extract(mt, idx)
     y1, idx = mt_extract(mt, idx)
-    #print(f"Debug: region_seed={reg_seed}, x1={16 * (x1 % 26)}, y1={16 * (y1 % 26)}")
     check_val, idx = mt_extract(mt, idx)
     is_bastion = (check_val % 6) >= 2
     

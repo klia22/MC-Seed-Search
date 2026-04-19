@@ -206,7 +206,7 @@ def _prompt_structure_constraint(idx):
             pass
     elif struct_type == "portal" or struct_type == "ruined_portal":
         # Question 1: Underground vs Surface
-        print("  Question 1 - Depth:")
+        print("  Select depth:")
         print("    0=any, 1=underground, 2=surface")
         depth_input = input("  Depth filter [0]: ").strip() or "0"
         try:
@@ -217,7 +217,7 @@ def _prompt_structure_constraint(idx):
             depth_idx = 0
         
         # Question 2: Giant vs Normal
-        print("  Question 2 - Portal type:")
+        print("  Select portal type:")
         print("    0=any, 1=giant, 2=normal")
         type_input = input("  Portal type [0]: ").strip() or "0"
         try:
